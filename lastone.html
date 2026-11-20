@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Ultimate Music Vibration Visualizer PRO</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #050505;
+  color: white;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  overflow-x: hidden;
+  transition: background 0.08s;
+}
+
+.top {
+  padding: 18px;
+  position: relative;
+  z-index: 20;
+}
+
+h1 {
+  font-size: 32px;
+  margin-top: 10px;
+}
+
+button, input, select, audio {
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  margin: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: bold;
+  background: white;
+  position: relative;
+  z-index: 10;
+}
+
+canvas {
+  width: 95%;
+  max-width: 1100px;
+  height: 180px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 18px;
+  margin: 15px auto;
+  display: block;
+}
+
+#visualRow {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  align-items: center;
+  gap: 28px;
+  width: 95%;
+  max-width: 900px;
+  margin: 25px auto;
+}
+
+#leftPanel {
+  width: 90px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#rightPanel {
+  text-align: left;
+  min-width: 0;
+}
+
+#vibrationBox {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: white;
+  pointer-events: none;
+  position: relative;
+  z-index: 1;
+
+  box-shadow:
+    0 0 50px white,
+    0 0 120px rgba(255,255,255,0.9);
+
+  transition:
+    transform 0.015s linear,
+    background 0.03s linear,
+    box-shadow 0.03s linear;
+}
+
+.info {
+  font-size: 21px;
+  margin-top: 10px;
+  overflow-wrap: break-word;
+}
+
+#noteLabel {
+  font-size: 38px;
+  font-weight: bold;
+}
+
+#lyricsBox {
+  width: 92%;
+  max-width: 900px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 30px auto;
+  background: rgba(255,255,255,0.05);
+  border-radius: 18px;
+  padding: 20px;
+  text-align: left;
+  white-space: pre-line;
+  line-height: 1.6;
+}
+
+input[type="range"] {
+  width: 320px;
+  max-width: 90%;
+}
+
+audio {
+  width: 90%;
+  margin-top: 12px;
+}
+
+.small {
+  opacity: 0.8;
+  font-size: 14px;
+}
+
+a {
+  color: #9ad;
+  font-weight: bold;
+}
+
+@media (max-width: 700px) {
+
+  #visualRow {
+    grid-template-columns: 70px minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  #leftPanel {
+    width: 70px;
+  }
+
+  #vibrationBox {
+    width: 24px;
+    height: 24px;
+  }
+
+  #noteLabel {
+    font-size: 26px;
+  }
+
+  .info {
+    font-size: 16px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="top">
+
+  <h1>Ultimate Music Vibration PRO</h1>
+
+  <input type="file" id="audioFile" accept="audio/*"/>
+
+  <br>
+
+  <button onclick="startFileMode()">Start Song</button>
+
+  <button onclick="startMicMode()">Mic Listen</button>
+
+  <br>
+
+  <input id="manualArtist" placeholder="Artist name" />
+
+  <input id="manualTitle" placeholder="Song title" />
+
+  <button onclick="searchLyricsFree()">
+    Search Lyrics Free
+  </button>
+
+  <br>
+
+  <select id="mode" onchange="switchMode()">
+    <option value="0">Vibration Only</option>
+    <option value="1">Full Visualizer</option>
+    <option value="2">Wave Only</option>
+  </select>
+
+  <div class="small">
+    Beat Sensitivity
+  </div>
+
+  <input
+    type="range"
+    id="sensitivity"
+    min="1"
+    max="40"
+    value="20"
+  />
+
+  <div class="small">
+    EXTREME VIBRATION POWER
+  </div>
+
+  <input
+    type="range"
+    id="vibrationBoost"
+    min="1"
+    max="100"
+    value="50"
+  />
+
+  <br>
+
+  <audio id="player" controls></audio>
+
+</div>
+
+<canvas id="waveform"></canvas>
+
+<canvas id="fft"></canvas>
+
+<div id="visualRow">
+
+  <div id="leftPanel">
+    <div id="vibrationBox"></div>
+  </div>
+
+  <div id="rightPanel">
+
+    <div id="noteLabel">
+      Note: -
+    </div>
+
+    <div class="info" id="vibrationValue">
+      Vibration: 0
+    </div>
+
+    <div class="info" id="songInfo">
+      Song: Not recognized
+    </div>
+
+    <div class="info" id="lyrics">
+      Lyrics Mood: ...
+    </div>
+
+    <div class="info" id="feeling">
+      Feeling: ...
+    </div>
+
+    <div class="info" id="status">
+      Status: Waiting
+    </div>
+
+  </div>
+
+</div>
+
+<div id="lyricsBox">
+
+Free version:
+Sound analysis, vibration,
+color, beat reaction,
+and lyrics search work.
+
+</div>
+
+<script>
+
+//////////////////////////////////////////////////////////////
+// VARIABLES
+//////////////////////////////////////////////////////////////
+
+let audioContext;
+let analyser;
+let source;
+let gainNode;
+
+let dataArray;
+let freqArray;
+
+let running = false;
+
+let animationId = null;
+
+let previousBass = 0;
+
+let lastVibrateTime = 0;
+
+//////////////////////////////////////////////////////////////
+// DOM
+//////////////////////////////////////////////////////////////
+
+const player =
+  document.getElementById("player");
+
+const fileInput =
+  document.getElementById("audioFile");
+
+const sensitivityInput =
+  document.getElementById("sensitivity");
+
+const vibrationBoostInput =
+  document.getElementById("vibrationBoost");
+
+const waveformCanvas =
+  document.getElementById("waveform");
+
+const fftCanvas =
+  document.getElementById("fft");
+
+const waveformCtx =
+  waveformCanvas.getContext("2d");
+
+const fftCtx =
+  fftCanvas.getContext("2d");
+
+const vibrationBox =
+  document.getElementById("vibrationBox");
+
+const noteLabel =
+  document.getElementById("noteLabel");
+
+const vibrationValue =
+  document.getElementById("vibrationValue");
+
+const songInfo =
+  document.getElementById("songInfo");
+
+const lyricsLabel =
+  document.getElementById("lyrics");
+
+const feelingLabel =
+  document.getElementById("feeling");
+
+const statusLabel =
+  document.getElementById("status");
+
+const lyricsBox =
+  document.getElementById("lyricsBox");
+
+//////////////////////////////////////////////////////////////
+// CANVAS
+//////////////////////////////////////////////////////////////
+
+function resizeCanvas(c){
+
+  c.width = c.clientWidth;
+  c.height = c.clientHeight;
+}
+
+resizeCanvas(waveformCanvas);
+
+resizeCanvas(fftCanvas);
+
+window.addEventListener("resize",()=>{
+
+  resizeCanvas(waveformCanvas);
+
+  resizeCanvas(fftCanvas);
+});
+
+//////////////////////////////////////////////////////////////
+// AUDIO
+//////////////////////////////////////////////////////////////
+
+function setupAnalyser(){
+
+  analyser =
+    audioContext.createAnalyser();
+
+  analyser.fftSize = 4096;
+
+  analyser.smoothingTimeConstant =
+    0.72;
+
+  gainNode =
+    audioContext.createGain();
+
+  gainNode.gain.value = 10;
+
+  dataArray =
+    new Uint8Array(analyser.fftSize);
+
+  freqArray =
+    new Uint8Array(
+      analyser.frequencyBinCount
+    );
+}
+
+async function resetAudio(){
+
+  running = false;
+
+  if(animationId){
+
+    cancelAnimationFrame(animationId);
+  }
+
+  if(audioContext){
+
+    await audioContext.close();
+  }
+
+  audioContext =
+    new AudioContext();
+
+  await audioContext.resume();
+
+  setupAnalyser();
+
+  previousBass = 0;
+}
+
+//////////////////////////////////////////////////////////////
+// FILE MODE
+//////////////////////////////////////////////////////////////
+
+async function startFileMode(){
+
+  const file =
+    fileInput.files[0];
+
+  if(!file){
+
+    alert(
+      "Please select an audio file first."
+    );
+
+    return;
+  }
+
+  await resetAudio();
+
+  const url =
+    URL.createObjectURL(file);
+
+  player.src = url;
+
+  source =
+    audioContext
+      .createMediaElementSource(player);
+
+  source.connect(gainNode);
+
+  gainNode.connect(analyser);
+
+  analyser.connect(
+    audioContext.destination
+  );
+
+  await player.play();
+
+  running = true;
+
+  statusLabel.textContent =
+    "Status: Playing selected song";
+
+  updateUI();
+}
+
+//////////////////////////////////////////////////////////////
+// MIC MODE
+//////////////////////////////////////////////////////////////
+
+async function startMicMode(){
+
+  await resetAudio();
+
+  try{
+
+    const stream =
+      await navigator
+        .mediaDevices
+        .getUserMedia({
+
+          audio:{
+
+            echoCancellation:false,
+            noiseSuppression:false,
+            autoGainControl:false,
+            channelCount:1
+          }
+        });
+
+    source =
+      audioContext
+        .createMediaStreamSource(stream);
+
+    source.connect(gainNode);
+
+    gainNode.connect(analyser);
+
+    running = true;
+
+    statusLabel.textContent =
+      "Status: Mic listening";
+
+    updateUI();
+
+  }catch(err){
+
+    statusLabel.textContent =
+      "Status: Microphone failed";
+
+    alert(
+      "Microphone permission is required."
+    );
+  }
+}
+
+//////////////////////////////////////////////////////////////
+// FREE SEARCH
+//////////////////////////////////////////////////////////////
+
+function searchLyricsFree(){
+
+  const artist =
+    document
+      .getElementById("manualArtist")
+      .value
+      .trim();
+
+  const title =
+    document
+      .getElementById("manualTitle")
+      .value
+      .trim();
+
+  if(!artist || !title){
+
+    alert(
+      "Please enter artist and song title."
+    );
+
+    return;
+  }
+
+  const googleUrl =
+    "https://www.google.com/search?q="
+    +
+    encodeURIComponent(
+      `${artist} ${title} lyrics Genius`
+    );
+
+  const geniusUrl =
+    "https://genius.com/search?q="
+    +
+    encodeURIComponent(
+      `${artist} ${title}`
+    );
+
+  const youtubeUrl =
+    "https://www.youtube.com/results?search_query="
+    +
+    encodeURIComponent(
+      `${artist} ${title}`
+    );
+
+  songInfo.textContent =
+    `Song: ${title} - ${artist}`;
+
+  lyricsBox.innerHTML =
+
+  `
+  Artist:
+  <b>${escapeHtml(artist)}</b>
+
+  <br><br>
+
+  Title:
+  <b>${escapeHtml(title)}</b>
+
+  <br><br>
+
+  <a href="${googleUrl}" target="_blank">
+  Open Google Lyrics Search
+  </a>
+
+  <br>
+
+  <a href="${geniusUrl}" target="_blank">
+  Open Genius Search
+  </a>
+
+  <br>
+
+  <a href="${youtubeUrl}" target="_blank">
+  Open YouTube Search
+  </a>
+  `;
+
+  statusLabel.textContent =
+    "Status: Free lyrics search ready";
+}
+
+//////////////////////////////////////////////////////////////
+// MAIN LOOP
+//////////////////////////////////////////////////////////////
+
+function updateUI(){
+
+  if(!running) return;
+
+  analyser.getByteTimeDomainData(
+    dataArray
+  );
+
+  analyser.getByteFrequencyData(
+    freqArray
+  );
+
+  const sensitivity =
+    Number(sensitivityInput.value);
+
+  const boost =
+    Number(vibrationBoostInput.value);
+
+  //////////////////////////////////////////////////////////
+  // BANDS
+  //////////////////////////////////////////////////////////
+
+  let subBass = 0;
+  let bass = 0;
+  let kick = 0;
+  let mid = 0;
+  let high = 0;
+
+  for(let i=1;i<20;i++){
+
+    subBass += freqArray[i];
+  }
+
+  for(let i=20;i<60;i++){
+
+    bass += freqArray[i];
+  }
+
+  for(let i=60;i<120;i++){
+
+    kick += freqArray[i];
+  }
+
+  for(let i=120;i<320;i++){
+
+    mid += freqArray[i];
+  }
+
+  for(let i=320;i<900;i++){
+
+    high += freqArray[i];
+  }
+
+  subBass /= 19*255;
+  bass /= 40*255;
+  kick /= 60*255;
+  mid /= 200*255;
+  high /= 580*255;
+
+  //////////////////////////////////////////////////////////
+  // IMPACT
+  //////////////////////////////////////////////////////////
+
+  const bassNow =
+    subBass+bass+kick;
+
+  const bassImpact =
+    Math.abs(
+      bassNow-previousBass
+    );
+
+  previousBass = bassNow;
+
+  //////////////////////////////////////////////////////////
+  // VIBRATION
+  //////////////////////////////////////////////////////////
+
+  const vibrationRaw =
+
+    subBass * 180 +
+    bass * 140 +
+    kick * 120 +
+    bassImpact * 260 +
+    mid * 40 +
+    high * 15;
+
+  const vibration =
+    Math.min(
+      500,
+      vibrationRaw *
+      sensitivity *
+      boost / 15
+    );
+
+  //////////////////////////////////////////////////////////
+  // NOTE + COLOR
+  //////////////////////////////////////////////////////////
+
+  const note =
+    detectNote();
+
+  const color =
+    getColor(note);
+
+  //////////////////////////////////////////////////////////
+  // BG
+  //////////////////////////////////////////////////////////
+
+  document.body.style.background =
+
+    `radial-gradient(
+      circle at center,
+      ${color.bright}55,
+      #000000 80%
+    )`;
+
+  vibrationBox.style.background =
+    color.bright;
+
+  vibrationBox.style.boxShadow =
+
+    `
+    0 0 ${40+vibration*0.8}px
+    ${color.bright},
+
+    0 0 ${100+vibration*1.2}px
+    ${color.bright},
+
+    0 0 ${180+vibration*1.6}px
+    ${color.bright}
+    `;
+
+  //////////////////////////////////////////////////////////
+  // SCALE
+  //////////////////////////////////////////////////////////
+
+  const circleScale =
+    Math.min(
+      5,
+      1+vibration/90
+    );
+
+  vibrationBox.style.transform =
+    `scale(${circleScale})`;
+
+  //////////////////////////////////////////////////////////
+  // PHONE VIBRATION
+  //////////////////////////////////////////////////////////
+
+  vibratePhone(vibration);
+
+  //////////////////////////////////////////////////////////
+  // DRAW
+  //////////////////////////////////////////////////////////
+
+  drawWaveform();
+
+  drawFFT();
+
+  //////////////////////////////////////////////////////////
+  // LABELS
+  //////////////////////////////////////////////////////////
+
+  noteLabel.textContent =
+    "Note: "+note;
+
+  vibrationValue.textContent =
+    "Vibration: "+
+    vibration.toFixed(1);
+
+  //////////////////////////////////////////////////////////
+  // FEELING
+  //////////////////////////////////////////////////////////
+
+  let feeling = "Soft";
+
+  let lyricMood =
+    "Quiet atmosphere";
+
+  if(vibration>60){
+
+    feeling = "Energetic";
+
+    lyricMood =
+      "Strong musical movement";
+  }
+
+  if(vibration>140){
+
+    feeling = "Powerful";
+
+    lyricMood =
+      "Heavy emotional pulse";
+  }
+
+  if(vibration>260){
+
+    feeling = "Extreme";
+
+    lyricMood =
+      "Massive vibration energy";
+  }
+
+  //////////////////////////////////////////////////////////
+  // PITCH FEEL
+  //////////////////////////////////////////////////////////
+
+  let pitchFeel =
+    "Low / Heavy";
+
+  if(
+    [
+      "F","F#",
+      "G","G#",
+      "A","A#",
+      "B"
+    ].includes(note)
+  ){
+
+    pitchFeel =
+      "High / Fast";
+  }
+
+  feelingLabel.textContent =
+
+    "Feeling: "
+    + feeling
+    + " | Pitch Feel: "
+    + pitchFeel;
+
+  lyricsLabel.textContent =
+    "Lyrics Mood: "
+    + lyricMood;
+
+  //////////////////////////////////////////////////////////
+
+  animationId =
+    requestAnimationFrame(updateUI);
+}
+
+//////////////////////////////////////////////////////////////
+// VIBRATION ENGINE
+//////////////////////////////////////////////////////////////
+
+function vibratePhone(v){
+
+  if(!navigator.vibrate) return;
+
+  const now = Date.now();
+
+  if(now-lastVibrateTime<40)
+    return;
+
+  const note =
+    detectNote();
+
+  const highNotes =
+
+    [
+      "F","F#",
+      "G","G#",
+      "A","A#",
+      "B"
+    ];
+
+  const midNotes =
+
+    [
+      "C","C#",
+      "D","D#",
+      "E"
+    ];
+
+  if(v<15) return;
+
+  //////////////////////////////////////////////////////////
+  // HIGH PITCH
+  //////////////////////////////////////////////////////////
+
+  if(highNotes.includes(note)){
+
+    if(v>220){
+
+      navigator.vibrate([
+        60,25,
+        60,25,
+        60,25,
+        60
+      ]);
+
+    }else{
+
+      navigator.vibrate([
+        45,30,45
+      ]);
+    }
+  }
+
+  //////////////////////////////////////////////////////////
+  // MID/LOW
+  //////////////////////////////////////////////////////////
+
+  else if(midNotes.includes(note)){
+
+    if(v>220){
+
+      navigator.vibrate([
+        220,35,220
+      ]);
+
+    }else{
+
+      navigator.vibrate(160);
+    }
+  }
+
+  //////////////////////////////////////////////////////////
+  // UNKNOWN
+  //////////////////////////////////////////////////////////
+
+  else{
+
+    if(v>220){
+
+      navigator.vibrate([
+        180,30,180
+      ]);
+
+    }else{
+
+      navigator.vibrate(90);
+    }
+  }
+
+  lastVibrateTime = now;
+}
+
+//////////////////////////////////////////////////////////////
+// NOTE DETECT
+//////////////////////////////////////////////////////////////
+
+function detectNote(){
+
+  let maxIndex = 0;
+
+  let maxValue = 0;
+
+  for(let i=5;i<900;i++){
+
+    if(freqArray[i]>maxValue){
+
+      maxValue =
+        freqArray[i];
+
+      maxIndex = i;
+    }
+  }
+
+  const frequency =
+
+    maxIndex *
+    audioContext.sampleRate /
+    analyser.fftSize;
+
+  if(
+    frequency<40 ||
+    maxValue<8
+  ){
+
+    return "-";
+  }
+
+  const notes =
+
+    [
+      "C","C#",
+      "D","D#",
+      "E","F",
+      "F#","G",
+      "G#","A",
+      "A#","B"
+    ];
+
+  const noteNumber =
+
+    Math.round(
+      12*Math.log2(
+        frequency/440
+      )
+    )+69;
+
+  const noteIndex =
+
+    (
+      (noteNumber%12)+12
+    )%12;
+
+  return notes[noteIndex];
+}
+
+//////////////////////////////////////////////////////////////
+// COLOR
+//////////////////////////////////////////////////////////////
+
+function getColor(note){
+
+  const colors = {
+
+    "C":{
+      bright:"#ff0000",
+      dark:"#3a0000"
+    },
+
+    "C#":{
+      bright:"#ff3f00",
+      dark:"#351000"
+    },
+
+    "D":{
+      bright:"#ff7f00",
+      dark:"#3a1d00"
+    },
+
+    "D#":{
+      bright:"#ffaa00",
+      dark:"#3a2600"
+    },
+
+    "E":{
+      bright:"#ffff00",
+      dark:"#333300"
+    },
+
+    "F":{
+      bright:"#00ff00",
+      dark:"#003300"
+    },
+
+    "F#":{
+      bright:"#00ffaa",
+      dark:"#003326"
+    },
+
+    "G":{
+      bright:"#0000ff",
+      dark:"#000033"
+    },
+
+    "G#":{
+      bright:"#001a99",
+      dark:"#000a33"
+    },
+
+    "A":{
+      bright:"#000080",
+      dark:"#000026"
+    },
+
+    "A#":{
+      bright:"#4b0082",
+      dark:"#160026"
+    },
+
+    "B":{
+      bright:"#800080",
+      dark:"#260026"
+    },
+
+    "-":{
+      bright:"#ffffff",
+      dark:"#111111"
+    }
+  };
+
+  return colors[note] ||
+    colors["-"];
+}
+
+//////////////////////////////////////////////////////////////
+// WAVE
+//////////////////////////////////////////////////////////////
+
+function drawWaveform(){
+
+  waveformCtx.clearRect(
+    0,
+    0,
+    waveformCanvas.width,
+    waveformCanvas.height
+  );
+
+  waveformCtx.beginPath();
+
+  const sliceWidth =
+
+    waveformCanvas.width /
+    dataArray.length;
+
+  let x = 0;
+
+  for(let i=0;i<dataArray.length;i++){
+
+    const v =
+      dataArray[i]/128.0;
+
+    const y =
+
+      v *
+      waveformCanvas.height /
+      2;
+
+    if(i===0){
+
+      waveformCtx.moveTo(x,y);
+
+    }else{
+
+      waveformCtx.lineTo(x,y);
+    }
+
+    x += sliceWidth;
+  }
+
+  waveformCtx.strokeStyle =
+    "white";
+
+  waveformCtx.lineWidth = 2;
+
+  waveformCtx.stroke();
+}
+
+//////////////////////////////////////////////////////////////
+// FFT
+//////////////////////////////////////////////////////////////
+
+function drawFFT(){
+
+  fftCtx.clearRect(
+    0,
+    0,
+    fftCanvas.width,
+    fftCanvas.height
+  );
+
+  const barWidth =
+
+    waveformCanvas.width /
+    freqArray.length * 3;
+
+  let x = 0;
+
+  for(
+    let i=0;
+    i<freqArray.length;
+    i+=3
+  ){
+
+    const barHeight =
+
+      freqArray[i]/255 *
+      fftCanvas.height;
+
+    fftCtx.fillStyle =
+      "white";
+
+    fftCtx.fillRect(
+
+      x,
+
+      fftCanvas.height -
+      barHeight,
+
+      barWidth,
+
+      barHeight
+    );
+
+    x += barWidth + 1;
+  }
+}
+
+//////////////////////////////////////////////////////////////
+// MODE
+//////////////////////////////////////////////////////////////
+
+function switchMode(){
+
+  const mode =
+    document
+      .getElementById("mode")
+      .value;
+
+  if(mode==="0"){
+
+    waveformCanvas.style.display =
+      "none";
+
+    fftCanvas.style.display =
+      "none";
+
+  }else if(mode==="1"){
+
+    waveformCanvas.style.display =
+      "block";
+
+    fftCanvas.style.display =
+      "block";
+
+  }else{
+
+    waveformCanvas.style.display =
+      "block";
+
+    fftCanvas.style.display =
+      "none";
+  }
+}
+
+//////////////////////////////////////////////////////////////
+// ESCAPE
+//////////////////////////////////////////////////////////////
+
+function escapeHtml(text){
+
+  return String(text)
+
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+//////////////////////////////////////////////////////////////
+
+switchMode();
+
+//////////////////////////////////////////////////////////////
+
+</script>
+
+</body>
+</html>
+Displaying 1000059471.jpg.Research
